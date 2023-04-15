@@ -1,0 +1,98 @@
+%{
+#include <bits/stdc++.h>
+#include "ordered_map.h"
+#include "parser.tab.hpp"
+#define YY_USER_ACTION yylloc.first_line = yylloc.last_line = yylineno;
+%}
+%option yylineno
+D	[0-9]
+L	[A-Za-z]
+Q       [A-Za-z0-9]
+s       ["]
+BL       [(]
+BR       [)]
+
+
+%%
+
+
+"//".*$ {
+	//fprintf(yyout,"Token Type: COMMENT\nValue: %s\n",yytext);
+		}
+
+["][^"]+["] {
+    yylval.s = strdup(yytext);
+	return STRINGLITERAL;
+		}
+(PROGRAM) {
+	return PROGRAM;
+		}
+(BEGIN) {
+	return _BEGIN;
+		}
+(END) {
+	return END;
+		}
+(FUNCTION) {
+	return FUNCTION;
+		}
+(READ) {
+	return READ;
+		}
+		
+(WRITE) {
+	return WRITE;
+		}
+(IF) {
+	return IF;
+		}
+(ELSE) {
+	return ELSE;
+		}
+(ENDIF) {return ENDIF;}
+(WHILE) {return WHILE;}
+(ENDWHILE) {return ENDWHILE;}
+(BREAK) {return BREAK;}
+(CONTINUE) {return CONTINUE;}
+(RETURN) {return RETURN;}
+(INT) {yylval.s = strdup(yytext);return INT;}
+(VOID) {return VOID;}
+(STRING) {return STRING;}
+(FLOAT) {yylval.s = strdup(yytext);return FLOAT;}
+{L}+{Q}* {
+	yylval.s = strdup(yytext);
+	return IDENTIFIER;
+		}
+{D}*"."{D}+ {
+	yylval.s = strdup(yytext);
+	return FLOATLITERAL;
+		}
+{D}+ {
+	yylval.s = strdup(yytext);
+	return INTLITERAL;
+		}
+
+
+
+(:=) {return ASSIGN;}
+[+] {return ADD;}
+[-] {return SUB;}
+[*] { return MUL;}
+[/] {return DIV;}
+(!=) {yylval.s = strdup(yytext);return NE;}
+(<=) {yylval.s = strdup(yytext);return LE;}
+(>=) {yylval.s = strdup(yytext);return GE;}
+(=) {yylval.s = strdup(yytext);return EQ;}
+(<) {yylval.s = strdup(yytext);return LT;}
+(>) {yylval.s = strdup(yytext);return GT;}
+[(] {yylval.s = strdup(yytext);return LBRACKET;}
+[)] {yylval.s = strdup(yytext);return RBRACKET;}
+(;) {yylval.s = strdup(yytext);return SEMICOLON;}
+(,) {yylval.s = strdup(yytext);return COMMA;}
+"\n" {}
+. {}
+
+
+
+%%
+int yywrap(){return 1;}

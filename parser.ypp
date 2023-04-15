@@ -1,0 +1,1068 @@
+//i have used a ordered map container feom tessil  https://github.com/Tessil/ordered-map
+//i took help from stackoverflow for line numbers from 
+//https://stackoverflow.com/questions/656703/how-does-flex-support-bison-location-exactly
+//A bit of reference from https://github.com/rishitsaiya/CS316-Compilers-Lab/tree/main/Lab-3
+
+%{
+#include <bits/stdc++.h>
+#include "ordered_map.h"
+#include <regex>
+using namespace std;
+stack <int> scope_stack;
+bool is_first_function=true;
+int reg=0;
+bool first_function=true;
+int yylex();
+void yyerror(char const *s);
+map<int,bool> free_reg;
+int scope=0;
+int label=0;
+bool rec_var_set=false;
+string a,b,c;
+int line=0;
+int block=0;
+std::string rec_var_type;
+std::string executable;
+std::string previous;
+stack<string> reg_stack;//to maintain registers free or not after every function call
+string reg_string="1111";
+map<int,map<std::string,string>>string_map;
+void restore_reg(string str){
+	for(int i=0;i<4;i++){
+		if(str[i]=='1'){
+			free_reg[i]=true;
+		}
+		else{
+			free_reg[i]=false;
+		}
+	}
+}
+struct node{
+		string node_type;
+		string node_value;
+		struct node *left, *right;
+		int res_reg=-1;
+		bool res_type_float=false;
+		//vector<node*> args;
+		bool res_gen=false;
+		node(string type,string value){
+			node_type=type;
+			node_value=value;
+			left=NULL;
+			right=NULL;
+			if(node_type=="floatliteral"){res_type_float=true;}
+		}
+	};
+map<int, std::string> scope_table;
+map<int,map<std::string,int>>variable_map;
+bool is_function_decl=false;
+int no_variables=0;
+vector <string> arguments;
+vector <string> code;
+map<int,map<std::string,int>>register_map;
+stack<int> label_stack;
+stack<int> while_label_stack;
+map<int,tsl::ordered_map<std::string,pair <std::string, pair <std::string, int>> >> variable_table;
+//   scope,                   name           type             value       line 
+void print(){
+ for(int i=0;i<scope;i++){
+    //cout<<"Symbol table "<<scope_table[i+1]<<"\n";
+    for (auto j : variable_table[i+1]){
+    	if(j.second.first=="STRING"){//cout<<"name "<<j.first<<" type "<<j.second.first<<" value "<<j.second.second.first<<"\n";
+		}
+    	else{
+              //cout<<"name "<<j.first<<" type "<<j.second.first<<"\n";
+    		}
+    	
+    }
+    //if(i<scope-1){cout<<"\n";}
+
+ }
+ //ofstream MyFile("executable.out");
+
+  // Write to the file
+  cout << executable;
+
+  // Close the file
+//   MyFile.close();
+//std::cout<<executable;
+ 
+
+}
+//stack<string> func_stack;
+void print_push(){
+	//executable=executable+"push\n";
+	if(first_function){executable+="push \n";}
+	for(int i=0;i<4;i++){
+		executable=executable+"push r"+to_string(i)+"\n";
+		
+	}
+	if(first_function){
+		executable+="jsr main\n";
+		executable+="sys halt\n";
+		first_function=false;
+	}
+}
+void print_pop(int n){
+	//executable=executable+"pop\n";
+	for(int i=0;i<n;i++){
+		executable=executable+"pop\n";
+	}
+	for(int i=3;i>=0;i--){
+		executable=executable+"pop r"+to_string(i)+"\n";
+		
+	}
+	
+}
+void free_reg_set(){
+	for(int i=0;i<4;i++){
+		free_reg[i]=true;
+		reg_string[i]='1';
+	}
+}
+int get_reg(){
+	for(int i=0;i<4;i++){
+		if(free_reg[i]==true){
+			free_reg[i]=false;
+			reg_string[i]='0';
+			return i;
+		}
+	}
+	return -1;
+}
+int scope_finder(string a,int s){
+	stack<int> s2(scope_stack);
+	while(s2.top()!=1 && !s2.empty()){
+		int temp=s2.top();
+		s2.pop();
+		if(variable_table[temp].find(a)!=variable_table[temp].end()){
+			return temp;
+		}
+	}
+	// if(variable_table[s].find(a)!=variable_table[s].end()){
+	// 	return s;
+	// }
+	// else if(scope_table[s].substr(0, 5)=="BLOCK"){
+	// 	return scope_finder(a,s-1);
+	// }
+	
+	for(int i=0;i<arguments.size();i++){
+		if(arguments[i]==a){
+			return -1;
+		}
+	}
+	 return 1;
+
+}
+map<string,string> return_type;
+map <string,int> arg_num;
+int get_argument_index(string a){
+	for(int i=0;i<arguments.size();i++){
+		if(arguments[i]==a){
+			return arguments.size()-i+1;
+		}
+	}
+	return -1;
+}
+void tokenize(string s, string del)
+{
+    int start, end = -1*del.size();
+    do {
+        start = end + del.size();
+        end = s.find(del, start);
+       // cout << s.substr(start, end - start) << endl;
+	   code.push_back(s.substr(start, end - start));
+    } while (end != -1);
+}
+string codify(struct node* tmp){
+   // cout<<tmp->node_type<<" "<<tmp->node_value<<"\n";
+    bool some=false;
+	string code="";
+	if(tmp->node_type=="identifier"){
+		code=code+"";
+	}
+	else if(tmp->node_type=="addop"){
+		if(tmp->node_value=="+"){
+			if(tmp->left->res_type_float==true || tmp->right->res_type_float==true){
+				if(tmp->left->node_type=="identifier"){
+					//code=code+"move "+ tmp->left->node_value+" r"+to_string(reg)+"\n";
+					//tmp->left->res_reg=reg;
+                    some=true;
+					//reg++;
+				}
+				if(tmp->right->node_type=="identifier"){
+					int reg1=get_reg();
+					// code=code+"move "+ tmp->right->node_value+" r"+to_string(reg1)+"\n";
+					int scp=scope_finder(tmp->right->node_value,scope_stack.top());
+					if(scp==-1){code=code+"move $"+to_string(get_argument_index(tmp->right->node_value))+" r"+to_string(reg1)+"\n";}
+					else if(scp>1){code=code+"move $-"+to_string(variable_map[scp][tmp->right->node_value])+" r"+to_string(reg1)+"\n";}
+					else{code=code+"move "+tmp->right->node_value+" r"+to_string(reg1)+"\n";}
+					tmp->right->res_reg=reg1;
+					
+				}
+				if(some==true){
+					int scp=scope_finder(tmp->left->node_value,scope_stack.top());
+					if(scp==-1){code=code+"addr $"+to_string(get_argument_index(tmp->left->node_value))+" r"+to_string(tmp->right->res_reg)+"\n";}
+					else if(scp>1){code=code+"addr $-"+to_string(variable_map[scp][tmp->left->node_value])+" r"+to_string(tmp->right->res_reg)+"\n";}
+					else{code=code+"addr "+tmp->left->node_value+" r"+to_string(tmp->right->res_reg)+"\n";}
+					tmp->res_reg=tmp->right->res_reg;
+					tmp->res_type_float=true;
+				}
+				else{
+					code=code+"addr r"+to_string(tmp->left->res_reg)+" r"+to_string(tmp->right->res_reg)+"\n";
+					tmp->res_reg=tmp->right->res_reg;
+					if(tmp->left->res_reg!=-1){
+						free_reg[tmp->left->res_reg]=true;
+						reg_string[tmp->left->res_reg]='1';
+					}
+					//free_reg[tmp->left->res_reg]=true;
+					tmp->res_type_float=true;
+				}
+				
+			}
+			else{
+				if(tmp->left->node_type=="identifier"){
+					//code=code+"move "+ tmp->left->node_value+" r"+to_string(reg)+"\n";
+					//tmp->left->res_reg=reg;
+					//reg++;
+					some=true;
+				}
+				if(tmp->right->node_type=="identifier"){
+					int reg1=get_reg();
+					// code=code+"move "+ tmp->right->node_value+" r"+to_string(reg1)+"\n";
+					int scp=scope_finder(tmp->right->node_value,scope_stack.top());
+					if(scp==-1){code=code+"move $"+to_string(get_argument_index(tmp->right->node_value))+" r"+to_string(reg1)+"\n";}
+					else if(scp>1){code=code+"move $-"+to_string(variable_map[scp][tmp->right->node_value])+" r"+to_string(reg1)+"\n";}
+					else{code=code+"move "+tmp->right->node_value+" r"+to_string(reg1)+"\n";}
+					tmp->right->res_reg=reg1;
+					//reg++;
+				}
+				if(some){
+					int scp=scope_finder(tmp->left->node_value,scope_stack.top());
+					if(scp==-1){code=code+"addi $"+to_string(get_argument_index(tmp->left->node_value))+" r"+to_string(tmp->right->res_reg)+"\n";}
+					else if(scp>1){code=code+"addi $-"+to_string(variable_map[scp][tmp->left->node_value])+" r"+to_string(tmp->right->res_reg)+"\n";}
+					else{code=code+"addi "+tmp->left->node_value+" r"+to_string(tmp->right->res_reg)+"\n";}
+					tmp->res_reg=tmp->right->res_reg;
+				}
+				else{
+					code=code+"addi r"+to_string(tmp->left->res_reg)+" r"+to_string(tmp->right->res_reg)+"\n";
+					tmp->res_reg=tmp->right->res_reg;
+				}
+				if(tmp->left->res_reg!=-1){
+						free_reg[tmp->left->res_reg]=true;
+						reg_string[tmp->left->res_reg]='1';
+					}
+				// code=code+"addi r"+to_string(tmp->left->res_reg)+" r"+to_string(tmp->right->res_reg)+"\n";
+				// tmp->res_reg=tmp->right->res_reg;
+				
+			}
+		}
+		else if(tmp->node_value=="-"){
+
+			if(tmp->left->res_type_float==true || tmp->right->res_type_float==true){
+				if(tmp->left->node_type=="identifier"){
+					int reg1=get_reg();
+					// code=code+"move "+ tmp->left->node_value+" r"+to_string(reg1)+"\n";
+					int scp=scope_finder(tmp->left->node_value,scope_stack.top());
+					if(scp==-1){code=code+"move $"+to_string(get_argument_index(tmp->left->node_value))+" r"+to_string(reg1)+"\n";}
+					else if(scp>1){code=code+"move $-"+to_string(variable_map[scp][tmp->left->node_value])+" r"+to_string(reg1)+"\n";}
+					else{code=code+"move "+tmp->left->node_value+" r"+to_string(reg1)+"\n";}
+					tmp->left->res_reg=reg1;
+					//reg++;
+				}
+				if(tmp->right->node_type=="identifier"){
+					//code=code+"move "+ tmp->right->node_value+" r"+to_string(reg)+"\n";
+					//tmp->right->res_reg=reg;
+					//reg++;
+					some=true;
+				}
+				if(some){
+					int scp=scope_finder(tmp->right->node_value,scope_stack.top());
+					if(scp==-1){code=code+"subr $"+to_string(get_argument_index(tmp->right->node_value))+" r"+to_string(tmp->left->res_reg)+"\n";}
+					else if(scp>1){code=code+"subr $-"+to_string(variable_map[scp][tmp->right->node_value])+" r"+to_string(tmp->left->res_reg)+"\n";}
+					else{code=code+"subr "+tmp->right->node_value+" r"+to_string(tmp->left->res_reg)+"\n";}
+					//code=code+"subr "+tmp->right->node_value+" r"+to_string(tmp->left->res_reg)+"\n";
+					tmp->res_reg=tmp->left->res_reg;
+					tmp->res_type_float=true;
+				}
+				else{
+					code=code+"subr r"+to_string(tmp->right->res_reg)+" r"+to_string(tmp->left->res_reg)+"\n";
+					tmp->res_reg=tmp->left->res_reg;
+					tmp->res_type_float=true;
+				}
+				if(tmp->right->res_reg!=-1){
+						free_reg[tmp->right->res_reg]=true;
+						reg_string[tmp->right->res_reg]='1';
+					}
+				// code=code+"subr r"+to_string(tmp->right->res_reg)+" r"+to_string(tmp->left->res_reg)+"\n";
+				// tmp->res_reg=tmp->left->res_reg;
+				// tmp->res_type_float=true;
+			}
+			else{
+				if(tmp->left->node_type=="identifier"){
+					int reg1=get_reg();
+					// code=code+"move "+ tmp->left->node_value+" r"+to_string(reg1)+"\n";
+					int scp=scope_finder(tmp->left->node_value,scope_stack.top());
+					if(scp==-1){code=code+"move $"+to_string(get_argument_index(tmp->left->node_value))+" r"+to_string(reg1)+"\n";}
+					else if(scp>1){code=code+"move $-"+to_string(variable_map[scp][tmp->left->node_value])+" r"+to_string(reg1)+"\n";}
+					else{code=code+"move "+tmp->left->node_value+" r"+to_string(reg1)+"\n";}
+					tmp->left->res_reg=reg1;
+					//reg++;
+				}
+				if(tmp->right->node_type=="identifier"){
+					// code=code+"move "+ tmp->right->node_value+" r"+to_string(reg)+"\n";
+					// tmp->right->res_reg=reg;
+					// reg++;
+					some=true;
+				}
+                
+				if(some){
+					int scp=scope_finder(tmp->right->node_value,scope_stack.top());
+					if(scp==-1){code=code+"subr $"+to_string(get_argument_index(tmp->right->node_value))+" r"+to_string(tmp->left->res_reg)+"\n";}
+					else if(scp>1){code=code+"subi $-"+to_string(variable_map[scp][tmp->right->node_value])+" r"+to_string(tmp->left->res_reg)+"\n";}
+					else{code=code+"subi "+tmp->right->node_value+" r"+to_string(tmp->left->res_reg)+"\n";}
+					tmp->res_reg=tmp->left->res_reg;
+				}
+				else{
+					code=code+"subi r"+to_string(tmp->right->res_reg)+" r"+to_string(tmp->left->res_reg)+"\n";
+				tmp->res_reg=tmp->left->res_reg;
+				}
+				if(tmp->right->res_reg!=-1){
+						free_reg[tmp->right->res_reg]=true;
+						reg_string[tmp->right->res_reg]='1';
+					}
+
+
+
+				
+			
+				
+			}
+		}
+	}
+	else if(tmp->node_type=="mulop"){
+		if(tmp->node_value=="*"){
+			if(tmp->left->res_type_float==true || tmp->right->res_type_float==true){
+				if(tmp->left->node_type=="identifier"){
+					// code=code+"move "+ tmp->left->node_value+" r"+to_string(reg)+"\n";
+					// tmp->left->res_reg=reg;
+					// reg++;
+					some=true;
+				}
+				if(tmp->right->node_type=="identifier"){
+					int reg1=get_reg();
+					// code=code+"move "+ tmp->right->node_value+" r"+to_string(reg1)+"\n";
+					int scp=scope_finder(tmp->right->node_value,scope_stack.top());
+					if(scp==-1){code=code+"move $"+to_string(get_argument_index(tmp->right->node_value))+" r"+to_string(reg1)+"\n";}
+					else if(scp>1){code=code+"move $-"+to_string(variable_map[scp][tmp->right->node_value])+" r"+to_string(reg1)+"\n";}
+					else{code=code+"move "+tmp->right->node_value+" r"+to_string(reg1)+"\n";}
+					tmp->right->res_reg=reg1;
+					//reg++;
+				}
+				if(some){
+					int scp=scope_finder(tmp->left->node_value,scope_stack.top());
+					if(scp==-1){code=code+"mulr $"+to_string(get_argument_index(tmp->left->node_value))+" r"+to_string(tmp->right->res_reg)+"\n";}
+					else if(scp>1){code=code+"mulr $-"+to_string(variable_map[scp][tmp->left->node_value])+" r"+to_string(tmp->right->res_reg)+"\n";}
+					else{code=code+"mulr "+tmp->left->node_value+" r"+to_string(tmp->right->res_reg)+"\n";}
+					//code=code+"mulr "+tmp->left->node_value+" r"+to_string(tmp->right->res_reg)+"\n";
+					tmp->res_reg=tmp->right->res_reg;
+					tmp->res_type_float=true;
+				}
+				else{
+					code=code+"mulr r"+to_string(tmp->left->res_reg)+" r"+to_string(tmp->right->res_reg)+"\n";
+					tmp->res_reg=tmp->right->res_reg;
+					tmp->res_type_float=true;
+				}
+				if(tmp->left->res_reg!=-1){
+						free_reg[tmp->left->res_reg]=true;
+						reg_string[tmp->left->res_reg]='1';
+					}
+				// code=code+"mulr r"+to_string(tmp->left->res_reg)+" r"+to_string(tmp->right->res_reg)+"\n";
+				// tmp->res_reg=tmp->right->res_reg;
+				// tmp->res_type_float=true;
+			}
+			else{
+				if(tmp->left->node_type=="identifier"){
+					// code=code+"move "+ tmp->left->node_value+" r"+to_string(reg)+"\n";
+					// tmp->left->res_reg=reg;
+					// reg++;
+					some=true;
+				}
+				if(tmp->right->node_type=="identifier"){
+					int reg1=get_reg();
+					int scp=scope_finder(tmp->right->node_value,scope_stack.top());
+					if(scp==-1){code=code+"move $"+to_string(get_argument_index(tmp->right->node_value))+" r"+to_string(reg1)+"\n";}
+					else if(scp>1){code=code+"move $-"+to_string(variable_map[scp][tmp->right->node_value])+" r"+to_string(reg1)+"\n";}
+					else{code=code+"move "+tmp->right->node_value+" r"+to_string(reg1)+"\n";}
+					// code=code+"move "+ tmp->right->node_value+" r"+to_string(reg1)+"\n";
+					tmp->right->res_reg=reg1;
+					//reg++;
+				}
+
+				if(some){
+					int scp=scope_finder(tmp->left->node_value,scope_stack.top());
+					if(scp==-1){code=code+"muli $"+to_string(get_argument_index(tmp->left->node_value))+" r"+to_string(tmp->right->res_reg)+"\n";}
+					else if(scp>1){code=code+"muli $-"+to_string(variable_map[scp][tmp->left->node_value])+" r"+to_string(tmp->right->res_reg)+"\n";}
+					else{code=code+"muli "+tmp->left->node_value+" r"+to_string(tmp->right->res_reg)+"\n";}
+					//code=code+"muli "+tmp->left->node_value+" r"+to_string(tmp->right->res_reg)+"\n";
+					tmp->res_reg=tmp->right->res_reg;
+				}
+                else{
+					code=code+"muli r"+to_string(tmp->left->res_reg)+" r"+to_string(tmp->right->res_reg)+"\n";
+				tmp->res_reg=tmp->right->res_reg;
+				}
+				if(tmp->left->res_reg!=-1){
+						free_reg[tmp->left->res_reg]=true;
+						reg_string[tmp->left->res_reg]='1';
+					}
+				
+				
+			}
+		}
+		else if(tmp->node_value=="/"){
+			if(tmp->left->res_type_float==true || tmp->right->res_type_float==true){
+				if(tmp->left->node_type=="identifier"){
+					int reg1=get_reg();
+					// code=code+"move "+ tmp->left->node_value+" r"+to_string(reg1)+"\n";
+					int scp=scope_finder(tmp->left->node_value,scope_stack.top());
+					if(scp==-1){code=code+"move $"+to_string(get_argument_index(tmp->left->node_value))+" r"+to_string(reg1)+"\n";}
+					else if(scp>1){code=code+"move $-"+to_string(variable_map[scp][tmp->left->node_value])+" r"+to_string(reg1)+"\n";}
+					else{code=code+"move "+tmp->left->node_value+" r"+to_string(reg1)+"\n";}
+					tmp->left->res_reg=reg1;
+					//reg++;
+				}
+				if(tmp->right->node_type=="identifier"){
+					// code=code+"move "+ tmp->right->node_value+" r"+to_string(reg)+"\n";
+					// tmp->right->res_reg=reg;
+					// reg++;
+					some=true;
+				}
+				if(some){
+					int scp=scope_finder(tmp->right->node_value,scope_stack.top());
+					if(scp==-1){code=code+"divr $"+to_string(get_argument_index(tmp->right->node_value))+" r"+to_string(tmp->left->res_reg)+"\n";}
+					else if(scp>1){code=code+"divr $-"+to_string(variable_map[scp][tmp->right->node_value])+" r"+to_string(tmp->left->res_reg)+"\n";}
+					else{code=code+"divr "+tmp->right->node_value+" r"+to_string(tmp->left->res_reg)+"\n";}
+					//code=code+"divr "+tmp->right->node_value+" r"+to_string(tmp->left->res_reg)+"\n";
+					tmp->res_reg=tmp->left->res_reg;
+					tmp->res_type_float=true;
+				}
+				else{
+					code=code+"divr r"+to_string(tmp->right->res_reg)+" r"+to_string(tmp->left->res_reg)+"\n";
+				tmp->res_reg=tmp->left->res_reg;
+				tmp->res_type_float=true;
+				}
+				if(tmp->right->res_reg!=-1){
+						free_reg[tmp->right->res_reg]=true;
+						reg_string[tmp->right->res_reg]='1';
+					}
+			}
+			else{
+
+				if(tmp->left->node_type=="identifier"){
+					int reg1=get_reg();
+					// code=code+"move "+ tmp->left->node_value+" r"+to_string(reg1)+"\n";
+					int scp=scope_finder(tmp->left->node_value,scope_stack.top());
+					if(scp==-1){code=code+"move $"+to_string(get_argument_index(tmp->left->node_value))+" r"+to_string(reg1)+"\n";}
+					else if(scp>1){code=code+"move $-"+to_string(variable_map[scp][tmp->left->node_value])+" r"+to_string(reg1)+"\n";}
+					else{code=code+"move "+tmp->left->node_value+" r"+to_string(reg1)+"\n";}
+					tmp->left->res_reg=reg1;
+					//reg++;
+				}
+				if(tmp->right->node_type=="identifier"){
+					// code=code+"move "+ tmp->right->node_value+" r"+to_string(reg)+"\n";
+					// tmp->right->res_reg=reg;
+					// reg++;
+					some=true;
+				}
+                if(some){
+					int scp=scope_finder(tmp->right->node_value,scope_stack.top());
+					if(scp==-1){code=code+"divi $"+to_string(get_argument_index(tmp->right->node_value))+" r"+to_string(tmp->left->res_reg)+"\n";}
+					else if(scp>1){code=code+"divi $-"+to_string(variable_map[scp][tmp->right->node_value])+" r"+to_string(tmp->left->res_reg)+"\n";}
+					else{code=code+"divi "+tmp->right->node_value+" r"+to_string(tmp->left->res_reg)+"\n";}
+				//	code=code+"divi "+tmp->right->node_value+" r"+to_string(tmp->left->res_reg)+"\n";
+					tmp->res_reg=tmp->left->res_reg;
+				}
+                 else{
+					code=code+"divi r"+to_string(tmp->right->res_reg)+" r"+to_string(tmp->left->res_reg)+"\n";
+				tmp->res_reg=tmp->left->res_reg;
+				 }
+				if(tmp->right->res_reg!=-1){
+						free_reg[tmp->right->res_reg]=true;
+						reg_string[tmp->right->res_reg]='1';
+					}
+				
+				
+			}
+		}
+	}
+	else if(tmp->node_type=="assign"){
+		if(tmp->right->node_type=="identifier"){
+			int reg1=get_reg();
+			int scp=scope_finder(tmp->right->node_value,scope_stack.top());
+			if(scp==-1){code=code+"move $"+to_string(get_argument_index(tmp->right->node_value))+" r"+to_string(reg1)+"\n";}
+			else if(scp>1){code=code+"move $-"+to_string(variable_map[scp][tmp->right->node_value])+" r"+to_string(reg1)+"\n";}
+			else{code=code+"move "+tmp->right->node_value+" r"+to_string(reg1)+"\n";}
+					//code=code+"move "+ tmp->right->node_value+" r"+to_string(reg1)+"\n";
+					tmp->right->res_reg=reg1;
+					//reg++;
+				}
+			int scp=scope_finder(tmp->left->node_value,scope_stack.top());
+			if(scp==-1){code=code+"move r"+to_string(tmp->right->res_reg)+" $"+to_string(get_argument_index(tmp->left->node_value))+"\n";}
+			else if(scp>1){code=code+"move r"+to_string(tmp->right->res_reg)+" $-"+to_string(variable_map[scp][tmp->left->node_value])+"\n";}
+			else{code=code+"move r"+to_string(tmp->right->res_reg)+" "+tmp->left->node_value+"\n";}
+					//code=code+"move r"+to_string(tmp->right->res_reg)+" "+tmp->left->node_value+"\n";
+		//code=code+"move r"+to_string(tmp->right->res_reg)+" "+tmp->left->node_value+"\n";
+		if(tmp->right->res_reg!=-1){
+						free_reg[tmp->right->res_reg]=true;
+						reg_string[tmp->right->res_reg]='1';
+					}
+	
+	}
+	else if(tmp->node_type=="intliteral"){
+		if(tmp->res_gen==false){int reg1=get_reg();
+		code=code+"move "+tmp->node_value+" r"+to_string(reg1)+"\n";tmp->res_reg=reg1;}
+	//reg++;
+	}
+	else if(tmp->node_type=="floatliteral"){
+		if(tmp->res_gen==false){
+			int reg1=get_reg();
+		code=code+"move "+tmp->node_value+" r"+to_string(reg1)+"\n";tmp->res_reg=reg1;}
+	//reg++;
+	}
+	
+	return code;
+}
+string generate_code(struct node* tmp){
+	string code="";
+	//cout<<"entering generate_code";
+	
+	if (tmp == NULL) {
+		//cout<<"returning \n";
+		return code;}
+	//cout<<"tmp->node_type "<<tmp->node_type<<"\n";
+    
+  //cout<<tmp->left<<"\n";
+    //cout << typeid(tmp).name() << endl;
+    struct node* tmp1=tmp->left;
+    code=code+generate_code(tmp1);
+    struct node* tmp2=tmp->right;
+    code=code+generate_code(tmp2);
+    code=code+codify(tmp);
+  return code;
+}
+string generate_code_cond(struct node* expr1,struct node* expr2,string op){
+	//cout<<"entering generate_code_cond and operator is "<<op<<"\n";
+	bool some=false;
+   string code="";
+  code+= generate_code(expr1);
+  if(expr1->node_type=="identifier"){
+		//code=code+"move "+expr1->node_value+" r"+to_string(reg)+"\n";expr1->res_reg=reg;reg++;
+		some=true;
+	}
+  code+= generate_code(expr2);
+  if(expr2->node_type=="identifier"){
+	    int reg1=get_reg();
+		int scp=scope_finder(expr2->node_value,scope_stack.top());
+		if(scp == -1){code=code+"move $"+to_string(get_argument_index(expr2->node_value))+" r"+to_string(reg1)+"\n";}
+		else if(scp>1){code=code+"move $-"+to_string(variable_map[scp][expr2->node_value])+" r"+to_string(reg1)+"\n";}
+		else{code=code+"move "+expr2->node_value+" r"+to_string(reg1)+"\n";}
+		expr2->res_reg=reg1;
+		//code=code+"move "+expr2->node_value+" r"+to_string(reg1)+"\n";expr2->res_reg=reg1;
+		//reg++;
+
+	}
+  if(expr1->res_type_float||expr2->res_type_float){
+	if(some){
+		int scp=scope_finder(expr1->node_value,scope_stack.top());
+		if(scp==-1){code+="cmpr $"+to_string(get_argument_index(expr1->node_value))+" r"+to_string(expr2->res_reg)+"\n";}
+		else if(scp>1){code+="cmpr $-"+to_string(variable_map[scp][expr1->node_value])+" r"+to_string(expr2->res_reg)+"\n";}
+		else{code+="cmpr "+expr1->node_value+" r"+to_string(expr2->res_reg)+"\n";}
+		//code+="cmpr "+expr1->node_value+" r"+to_string(expr2->res_reg)+"\n";}
+	}
+	else{
+		code+="cmpr r"+to_string(expr1->res_reg)+" r"+to_string(expr2->res_reg)+"\n";
+	}
+	
+  }
+  else{
+	if(some){
+		int scp=scope_finder(expr1->node_value,scope_stack.top());
+		if(scp==-1){code+="cmpi $"+to_string(get_argument_index(expr1->node_value))+" r"+to_string(expr2->res_reg)+"\n";}
+		else if(scp>1){code+="cmpi $-"+to_string(variable_map[scp][expr1->node_value])+" r"+to_string(expr2->res_reg)+"\n";}
+		else{code+="cmpi "+expr1->node_value+" r"+to_string(expr2->res_reg)+"\n";}
+	}
+	else{
+		code+="cmpi r"+to_string(expr1->res_reg)+" r"+to_string(expr2->res_reg)+"\n";
+	}
+  }
+  if(expr1->res_reg!=-1){
+						free_reg[expr1->res_reg]=true;
+						reg_string[expr1->res_reg]='1';
+					}
+  if(expr2->res_reg!=-1){
+						free_reg[expr2->res_reg]=true;
+						reg_string[expr2->res_reg]='1';
+					}
+
+  if(op=="<"){
+	code+="jge label"+to_string(label)+"\n";
+  }
+  if(op==">"){code+="jle label"+to_string(label)+"\n";}
+  if(op=="<="){code+="jgt label"+to_string(label)+"\n";}
+  if(op==">="){code+="jlt label"+to_string(label)+"\n";}
+  if(op=="="){code+="jne label"+to_string(label)+"\n";}
+  if(op=="!="){code+="jeq label"+to_string(label)+"\n";}
+
+  return code;
+ 
+}
+%}
+%locations
+%union{
+char * s;
+struct node* n;
+}
+%token STRINGLITERAL PROGRAM _BEGIN END FUNCTION READ WRITE IF ELSE ENDIF WHILE ENDWHILE BREAK CONTINUE RETURN
+%token INT VOID STRING FLOAT IDENTIFIER FLOATLITERAL INTLITERAL OPERATOR
+%token ASSIGN ADD SUB MUL DIV NE LE GE EQ LT GT LBRACKET RBRACKET SEMICOLON COMMA
+%type <s> var_type str FLOAT INT ADD SUB MUL DIV NE LE GE EQ LT GT LBRACKET RBRACKET   INTLITERAL FLOATLITERAL STRINGLITERAL IDENTIFIER OPERATOR ASSIGN id compop else_part if_stmt aug_else_part any_type
+%type <n> addop mulop  assign_expr expr expr_prefix factor factor_prefix postfix_expr primary  call_expr func_decl func_declarations
+
+%%
+program:	PROGRAM id _BEGIN {scope++;scope_table[scope]="GLOBAL"; no_variables=0;
+            scope_stack.push(scope);
+}
+			pgm_body END {executable+="sys halt  ";
+			code.push_back("sys halt  ");
+			print();
+			};
+id:		IDENTIFIER ;
+pgm_body:	decl func_declarations ;
+decl:		string_decl decl | var_decl decl | ;
+string_decl:	STRING id ASSIGN str SEMICOLON {
+           a=$2;b=$4;
+
+					 if (variable_table[scope_stack.top()].find(a) != variable_table[scope_stack.top()].end()){ cout<<"DECLARATION ERROR " <<a<< " (previous declaration was at line "<<variable_table[scope_stack.top()][a].second.second<<")";return 0;
+					 }
+
+					 variable_table[scope_stack.top()][a]=make_pair("STRING", make_pair(b, line));
+					 no_variables++;
+					 variable_map[scope_stack.top()][a]=no_variables;
+					 if(scope_stack.top()>1){
+						string_map[scope_stack.top()][a]=a+"_"+to_string(scope_stack.top());
+						executable="str "+string_map[scope_stack.top()][a] +" "+b+"\n"+executable;
+					 }
+					 else{
+						executable=executable+"str "+a +" "+b+"\n";
+						string_map[scope_stack.top()][a]=a;
+					 code.push_back("str "+a +" "+b+"\n");
+					 }
+					 
+					 
+					
+};
+str:		STRINGLITERAL {};
+var_decl:	var_type {a=$1;rec_var_type= a ;rec_var_set=true;} id_list SEMICOLON ;
+
+var_type:	FLOAT {}| INT {} ;
+
+any_type:	var_type | VOID {
+	
+	//$$="VOID";
+	string void1="VOID";
+				strcpy($$, void1.c_str());
+};
+id_list:	id {
+a=$1;
+        if(rec_var_set){
+			//cout<<rec_var_type<<"\n";
+        line=@1.first_line;
+				if (variable_table[scope_stack.top()].find(a) != variable_table[scope_stack.top()].end()){ cout<<"DECLARATION ERROR " <<a<< " (previous declaration was at line "<<variable_table[scope_stack.top()][a].second.second<<")";return 0;
+				 //cout<<"name "<<a<<" type "<<variable_table[scope][a].second.first<<"\n";
+				}
+				variable_table[scope_stack.top()][a]=make_pair(rec_var_type, make_pair("", line));
+				no_variables++;
+					 variable_map[scope_stack.top()][a]=no_variables;
+				//cout<<variable_table[scope][a].first<<"\n";
+				//executable=executable+"var "+a +" \n";
+				if(scope_stack.top()==1){executable=executable+"var "+a +"\n";}
+				//code.push_back("var "+a +" \n");
+        }
+         else{
+			     a=$1; string e;
+				 int s=scope_finder(a,scope_stack.top());
+				
+                  if(variable_table[s][a].first=="FLOAT"){ e="r";}
+				  else if(variable_table[s][a].first=="INT"){ e="i";}
+				  else if(variable_table[s][a].first=="STRING"){ e="s";}
+				  //cout<<"name "<<a<<" type "<<variable_table[scope][a].first<<"\n";
+				  if(s==-1){executable+="sys "+previous+e +" $"+to_string(get_argument_index(a))+"\n";}
+				 else if(s>1){
+					if(e=="s"){executable+="sys "+previous+e +" "+string_map[s][a]+"\n";}
+					else{executable+="sys "+previous+e +" $-"+to_string(variable_map[s][a])+"\n";
+				  code.push_back("sys "+previous+e +" $-"+to_string(variable_map[s][a])+"\n");}
+				  
+				  }
+				  else{executable+="sys "+previous+e +" "+a+"\n";
+				  code.push_back("sys "+previous+e +" "+a+"\n");
+				  }
+			} }
+			id_tail{} ;
+id_tail:	COMMA id {a=$2;
+				 if(rec_var_set){
+				 line=@2.first_line;
+				if (variable_table[scope_stack.top()].find(a) != variable_table[scope_stack.top()].end()){ cout<<"DECLARATION ERROR " <<a<< " (previous declaration was at line "<<variable_table[scope_stack.top()][a].second.second<<")";return 0;
+				//cout<<"name "<<a<<" type "<<variable_table[scope][a].second.first<<"\n";
+				}
+				variable_table[scope_stack.top()][a]=make_pair(rec_var_type, make_pair("", line));
+				no_variables++;
+					 variable_map[scope_stack.top()][a]=no_variables;
+				//executable=executable+"var "+a +"\n";
+				if(scope_stack.top()==1){executable=executable+"var "+a +"\n";}
+				//code.push_back("var "+a +"\n");
+				 }
+				 else{a=$2; 
+				 string e;
+				
+				// string j;
+				  int s=scope_finder(a,scope_stack.top());
+				  
+				  
+                  if(variable_table[s][a].first=="FLOAT"){ e="r";}
+				  else if(variable_table[s][a].first=="INT"){ e="i";}
+				  else if(variable_table[s][a].first=="STRING"){ e="s";}
+				  if(s==-1){executable+="sys "+previous+e +" $"+to_string(get_argument_index(a))+"\n";}
+				  else if(s>1){
+					if(e=="s"){executable+="sys "+previous+e +" "+string_map[s][a]+"\n";}
+					else{executable+="sys "+previous+e +" $-"+to_string(variable_map[s][a])+"\n";
+				  code.push_back("sys "+previous+e +" $-"+to_string(variable_map[s][a])+"\n");}
+				  
+				  }
+				  else{executable+="sys "+previous+e +" "+a+"\n";
+				  code.push_back("sys "+previous+e +" "+a+"\n");
+				  }
+				  }
+				  
+				  }
+				
+				id_tail {}| {rec_var_set=false;};
+param_decl_list:	param_decl param_decl_tail | ;
+param_decl:	var_type id { 
+	 a=$2;line=@2.first_line; 
+                     if(!is_function_decl){
+						
+
+						if (variable_table[scope_stack.top()].find(a) != variable_table[scope_stack.top()].end()){ cout<<"DECLARATION ERROR " <<a<< " (previous declaration was at line "<<variable_table[scope_stack.top()][a].second.second<<")";return 0;
+						//cout<<"name "<<a<<" type "<<variable_table[scope][a].second.first<<"\n";
+						}
+						variable_table[scope_stack.top()][a]=make_pair($1, make_pair("", line));
+						no_variables++;
+					 variable_map[scope_stack.top()][a]=no_variables;
+					 }
+					 else{
+						variable_table[-1][a]=make_pair($1, make_pair("", line));
+						arguments.push_back(a);
+					 }
+
+};
+param_decl_tail:	COMMA param_decl param_decl_tail | {is_function_decl=false;};
+func_declarations:	func_decl func_declarations | {$$=NULL;} ;
+func_decl:	FUNCTION any_type id {
+	    if(is_first_function){print_push();is_first_function=false;}
+         a=$3;
+				scope++;
+				scope_stack.push(scope);
+				
+				return_type[a]=$2;
+				no_variables=0;
+				scope_table[scope]=a;
+				executable+="label "+a+"\n";
+				executable+="link @\n";
+				reg_stack.push(reg_string);
+				free_reg_set();
+				is_function_decl=true;
+				variable_table[-1].clear();
+				arguments.clear();
+				}
+			 LBRACKET param_decl_list{string d=$3;arg_num[d]=arguments.size();} RBRACKET _BEGIN func_body END {
+				executable+="unlnk\n";
+				executable+="ret\n";
+				reg_string=reg_stack.top();
+				reg_stack.pop();
+				restore_reg(reg_string);
+				
+				scope_stack.pop();
+				//cout<<scope_table[scope]<<"\n";
+				
+				executable=regex_replace(executable,regex("@"),to_string(no_variables));
+				variable_table[-1].clear();
+				arguments.clear();
+
+			 };
+func_body:	decl stmt_list  ;
+stmt_list:	stmt stmt_list | ;
+stmt:		base_stmt | if_stmt | while_stmt ;
+base_stmt:	assign_stmt | read_stmt | write_stmt | return_stmt ;
+assign_stmt:	assign_expr SEMICOLON {
+	//cout<<$1->right->node_value<<"\n";
+	string c=generate_code($1);
+	executable+=c;
+	tokenize(c,"\n");
+	free_reg_set();
+	//code.push_back(c);
+		//cout<<"started generating code\n";
+};
+assign_expr:	id ASSIGN expr {
+	                
+                    $$=new node("assign","=");
+					$$->left=new node("identifier",$1);
+					$$->right=$3;
+					//cout<<$$->right->node_value<<"\n";
+				
+
+
+} ;
+read_stmt:	READ {previous="read";}LBRACKET id_list RBRACKET SEMICOLON ;
+write_stmt:	WRITE {previous="write";}LBRACKET id_list RBRACKET SEMICOLON ;
+return_stmt:	RETURN expr SEMICOLON {
+	string c=generate_code($2);
+	int reg1;
+	if($2->node_type=="identifier"){
+		reg1=get_reg();
+		int scp=scope_finder($2->node_value,scope_stack.top());
+		if(scp == -1){executable+="move $"+to_string(get_argument_index($2->node_value))+" r"+to_string(reg1)+"\n";}
+		else if(scp>1){executable+="move $-"+to_string(variable_map[scp][$2->node_value])+" r"+to_string(reg1)+"\n";}
+		else{executable+="move "+$2->node_value+" r"+to_string(reg1)+"\n";}
+		$2->res_reg=reg1;
+	}
+	executable+=c;
+	executable+="move r"+to_string($2->res_reg)+" $"+to_string(2+arguments.size()+4)+"\n";
+	free_reg[$2->res_reg]=true;
+	executable+="unlnk\n";
+				executable+="ret\n";
+
+} ;
+expr:		expr_prefix factor {
+	
+					if($1==NULL){$$=$2;}
+					else{$1->right=$2;$$=$1;}
+					//cout<<$$->node_value<<"\n"; problem heere
+					
+					} ;
+expr_prefix:	expr_prefix factor addop {
+					if($1==NULL){$3->left=$2;$$=$3;}
+					else{$1->right=$2;$3->left=$1;$$=$3;}
+					} | {$$=NULL;} ;
+factor:		factor_prefix postfix_expr {
+					if($1==NULL){$$=$2;}
+					else{
+						$1->right=$2;$$=$1;
+						//$2->right=$1;$$=$2;
+						}
+					
+					
+					} ;
+factor_prefix:	factor_prefix postfix_expr mulop {
+					if($1==NULL){$3->left=$2;$$=$3;}
+					else{ 
+						$1->right = $2;$3->left = $1;$$=$3;
+						//$1->right = $2;$3->left = $2;$$=$3;
+						}
+} | {$$=NULL;}; ;
+postfix_expr:	primary {$$=$1;}| call_expr {$$=$1;};
+call_expr:	id{executable+="push \n";print_push();string d=$1;
+
+//func_stack.push(d);
+}  LBRACKET expr_list RBRACKET { 
+	
+	string b=$1;
+	executable+="jsr "+b+"\n";
+	code.push_back("jsr "+b+"\n");
+	print_pop(arg_num[b]);
+	//cout<<"arg_num[b] "<<arg_num[b]<<"\n";
+	//executable+=b+to_string(arg_num[b])+"\n";
+	int a=get_reg();
+	executable+="pop r"+to_string(a)+"\n";
+	code.push_back("pop r"+to_string(a)+"\n");
+	
+	if(return_type[b]=="INT"){
+         	$$=new node("intliteral",b);
+	$$->res_reg=a;
+	$$->res_gen=true;
+
+	}
+	else if (return_type[b]=="FLOAT"){
+		$$=new node("floatliteral",b);
+		$$->res_reg=a;
+		$$->res_type_float=true;
+		$$->res_gen=true;
+	}
+	else{
+		
+		$$=new node("floatliteral",to_string(0));
+		$$->res_type_float=true;
+	}
+
+
+	//func_stack.pop();
+	};
+
+expr_list:	expr{
+  
+ executable+=generate_code($1);
+ if($1->node_type=="identifier"){
+	 //int reg1=get_reg();
+	 int scp=scope_finder($1->node_value,scope_stack.top());
+	 if(scp == -1){executable+="push $"+to_string(get_argument_index($1->node_value))+"\n";}
+	 else if(scp>1){executable+="push $-"+to_string(variable_map[scp][$1->node_value])+"\n";}
+	 else{executable+="push "+$1->node_value+"\n";}
+	 
+ }
+ else{
+	 executable+="push r"+to_string($1->res_reg)+"\n";
+	 free_reg[$1->res_reg]=true;
+ }
+ //executable+="push r"+to_string($1->res_reg)+"\n";
+
+} expr_list_tail | ;
+expr_list_tail:	COMMA expr{
+
+						 executable+=generate_code($2);
+ if($2->node_type=="identifier"){
+	 //int reg1=get_reg();
+	 int scp=scope_finder($2->node_value,scope_stack.top());
+	 if(scp == -1){executable+="push $"+to_string(get_argument_index($2->node_value))+"\n";}
+	 else if(scp>1){executable+="push $-"+to_string(variable_map[scp][$2->node_value])+"\n";}
+	 else{executable+="push "+$2->node_value+"\n";}
+	 
+ }
+ else{
+	 executable+="push r"+to_string($2->res_reg)+"\n";
+	 free_reg[$2->res_reg]=true;
+ }
+} expr_list_tail | ;
+primary:	LBRACKET expr RBRACKET {$$=$2;}| id {$$=new node("identifier",$1);
+a=$1;
+ int s=scope_finder(a,scope_stack.top());
+                  if(variable_table[s][a].first=="FLOAT"){ $$->res_type_float=true;}
+            
+} | INTLITERAL  {$$=new node("intliteral",$1);} | FLOATLITERAL  {$$=new node("floatliteral",$1);};
+addop:		ADD {$$=new node("addop","+");}
+|SUB  {$$=new node("addop","-");};
+mulop:		MUL {$$=new node("mulop","*");}|DIV {$$=new node("mulop","/");};
+if_stmt:	IF LBRACKET cond RBRACKET decl stmt_list else_part ENDIF{
+				
+				string a = $7;
+				if(a=="no"){executable+="label label"+to_string(label_stack.top())+"\n";
+				code.push_back("label label"+to_string(label_stack.top())+"\n");
+				label_stack.pop();executable+="label label"+to_string(label_stack.top())+"\n";
+				code.push_back("label label"+to_string(label_stack.top())+"\n");
+				label_stack.pop();}
+				else{executable+="label label"+to_string(label_stack.top())+"\n";
+				code.push_back("label label"+to_string(label_stack.top())+"\n");
+				label_stack.pop();}
+				scope_stack.pop();
+				} ;
+else_part:	ELSE {scope++;block++; scope_table[scope] = "BLOCK "+to_string(block); scope_stack.push(scope);
+int a=label_stack.top();label_stack.pop();
+int b=label_stack.top();label_stack.pop();
+executable+="jmp label"+to_string(b)+"\n";
+code.push_back("jmp label"+to_string(b)+"\n");
+executable+="label label"+to_string(a)+"\n";
+code.push_back("label label"+to_string(a)+"\n");
+label_stack.push(b);
+} 
+			decl stmt_list {
+				//$$="yes";
+				string yes="yes";
+				strcpy($$, yes.c_str());
+				scope_stack.pop();
+			
+			}|{
+				//$$="no";
+				string no="no";
+				strcpy($$, no.c_str());
+			
+			} ;
+cond:		expr compop expr { scope++;block++; scope_table[scope] = "BLOCK "+to_string(block);
+scope_stack.push(scope);
+                 free_reg_set();
+				 label++;label_stack.push(label);
+				 label++;label_stack.push(label);
+				 string a=generate_code_cond($1,$3,$2);
+                 executable+=a;
+				 tokenize(a,"\n");
+				 //code.push_back(a);
+				 free_reg_set();
+				 }  ;
+compop:		LT {$$=$1;}| GT {$$=$1;}| EQ {$$=$1;}| NE {$$=$1;}|LE {$$=$1;}|GE {$$=$1;};
+while_stmt:	WHILE  {
+	int f=label+1;
+	while_label_stack.push(f);
+	executable+="label label"+to_string(f)+"-in\n";
+	code.push_back("label label"+to_string(f)+"-in\n");
+
+}LBRACKET cond RBRACKET decl aug_stmt_list ENDWHILE {executable+="jmp label"+to_string(while_label_stack.top())+"-in\n";
+code.push_back("jmp label"+to_string(while_label_stack.top())+"-in\n");
+executable+="label label"+to_string(label_stack.top())+"\n";
+code.push_back("label label"+to_string(label_stack.top())+"\n");label_stack.pop();
+
+executable+="label label"+to_string(label_stack.top())+"\n";
+code.push_back("label label"+to_string(label_stack.top())+"\n");
+label_stack.pop();
+while_label_stack.pop();
+scope_stack.pop();};
+aug_stmt_list:	aug_stmt aug_stmt_list | ;
+aug_stmt:	base_stmt | aug_if_stmt | while_stmt | CONTINUE SEMICOLON {
+ 
+					executable+="jmp label"+to_string(while_label_stack.top())+"-in\n";
+					code.push_back("jmp label"+to_string(while_label_stack.top())+"-in\n");
+ 
+
+}
+					
+					 | BREAK SEMICOLON {
+					executable+="jmp label"+to_string(while_label_stack.top())+"\n";
+					code.push_back("jmp label"+to_string(while_label_stack.top())+"\n");
+					 }
+aug_if_stmt:	IF  LBRACKET cond RBRACKET decl aug_stmt_list aug_else_part ENDIF {
+	            scope_stack.pop();
+                string a = $7;
+				if(a=="no"){executable+="label label"+to_string(label_stack.top())+"\n";
+				code.push_back("label label"+to_string(label_stack.top())+"\n");
+				label_stack.pop();executable+="label label"+to_string(label_stack.top())+"\n";
+				code.push_back("label label"+to_string(label_stack.top())+"\n");
+				label_stack.pop();}
+				else{executable+="label label"+to_string(label_stack.top())+"\n";
+				code.push_back("label label"+to_string(label_stack.top())+"\n");
+				label_stack.pop();}
+				} ;
+aug_else_part:	ELSE {   scope++;block++; scope_table[scope] = "BLOCK "+to_string(block);
+scope_stack.push(scope);
+                   int a=label_stack.top();label_stack.pop();
+int b=label_stack.top();label_stack.pop();
+executable+="jmp label"+to_string(b)+"\n";
+code.push_back("jmp label"+to_string(b)+"\n");
+executable+="label label"+to_string(a)+"\n";
+code.push_back("label label"+to_string(a)+"\n");
+label_stack.push(b);
+                       } 
+				decl aug_stmt_list {
+					//$$="yes";
+					string yes="yes";
+				strcpy($$, yes.c_str());
+					scope_stack.pop();
+					}|{
+						//$$="no";
+						string no="no";
+				strcpy($$, no.c_str());
+						
+						}  ;
+%%
+
+/////////////////////////////////////////////////////////////
+//retun-----------------done
+
+//call ------------done
+
+//if else scope issue
