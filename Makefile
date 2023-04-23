@@ -12,7 +12,8 @@ lex.yy.cpp: lex.lpp
 	@flex  -o lex.yy.cpp $<
 
 clean: 
-	@rm lex.yy.cpp
-	@rm parser.tab.cpp
-	@rm parser.tab.hpp
+	@rm -f lex.yy.cpp
+	@rm -f parser.tab.cpp
+	@rm -f parser.tab.hpp
+	@rm -f compiler
 	
