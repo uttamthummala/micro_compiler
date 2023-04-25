@@ -8,6 +8,7 @@
 #include "ordered_map.h"
 #include <regex>
 using namespace std;
+int no_vars=0;
 stack <int> scope_stack;
 bool is_first_function=true;
 int reg=0;
@@ -884,26 +885,33 @@ call_expr:	id{executable+="push \n";print_push();string d=$1;
 	int a=get_reg();
 	executable+="pop r"+to_string(a)+"\n";
 	code.push_back("pop r"+to_string(a)+"\n");
+    executable="var Temp_"+to_string(no_vars)+"\n"+executable;
+  
+	executable+="move r"+to_string(a)+" Temp_"+to_string(no_vars)+"\n";
 	
+
 	if(return_type[b]=="INT"){
-         	$$=new node("intliteral",b);
-	$$->res_reg=a;
-	$$->res_gen=true;
+         	$$=new node("identifier","Temp_"+to_string(no_vars));
+			$$->res_type_float=false;
+			variable_table[1]["Temp_"+to_string(no_vars)]=make_pair("INT", make_pair("", line));
+	
 
 	}
 	else if (return_type[b]=="FLOAT"){
-		$$=new node("floatliteral",b);
-		$$->res_reg=a;
+		$$=new node("identifier","Temp_"+to_string(no_vars));
+		
 		$$->res_type_float=true;
-		$$->res_gen=true;
+		variable_table[1]["Temp_"+to_string(no_vars)]=make_pair("FLOAT", make_pair("", line));
+		
 	}
 	else{
 		
-		$$=new node("floatliteral",to_string(0));
+		$$=new node("identifier","Temp_"+to_string(no_vars));
+		variable_table[1]["Temp_"+to_string(no_vars)]=make_pair("FLOAT", make_pair("", line));
 		$$->res_type_float=true;
 	}
-
-
+   free_reg[a]=true;
+    no_vars++;
 	//func_stack.pop();
 	};
 
